@@ -8,7 +8,13 @@ from sklearn.linear_model import LinearRegression
 from time import time, sleep, strftime, gmtime
 from .stream import find_muse
 from .muse import Muse
-from .constants import LSL_SCAN_TIMEOUT, LSL_EEG_CHUNK, LSL_PPG_CHUNK, LSL_ACC_CHUNK, LSL_GYRO_CHUNK
+from .constants import (
+    LSL_SCAN_TIMEOUT,
+    LSL_EEG_CHUNK,
+    LSL_PPG_CHUNK,
+    LSL_ACC_CHUNK,
+    LSL_GYRO_CHUNK,
+)
 
 # Records a fixed duration of EEG data from an LSL stream into a CSV file
 
@@ -29,12 +35,14 @@ def record(
         chunk_length = LSL_GYRO_CHUNK
 
     if not filename:
-        filename = os.path.join(os.getcwd(), "%s_recording_%s.csv" %
-                                (data_source,
-                                 strftime('%Y-%m-%d-%H.%M.%S', gmtime())))
+        filename = os.path.join(
+            os.getcwd(),
+            "%s_recording_%s.csv"
+            % (data_source, strftime("%Y-%m-%d-%H.%M.%S", gmtime())),
+        )
 
     print("Looking for a %s stream..." % (data_source))
-    streams = resolve_byprop('type', data_source, timeout=LSL_SCAN_TIMEOUT)
+    streams = resolve_byprop("type", data_source, timeout=LSL_SCAN_TIMEOUT)
 
     if len(streams) == 0:
         print("Can't find %s stream." % (data_source))
@@ -45,8 +53,7 @@ def record(
     # eeg_time_correction = inlet.time_correction()
 
     print("Looking for a Markers stream...")
-    marker_streams = resolve_byprop(
-        'name', 'Markers', timeout=LSL_SCAN_TIMEOUT)
+    marker_streams = resolve_byprop("name", "Markers", timeout=LSL_SCAN_TIMEOUT)
 
     if marker_streams:
         inlet_marker = StreamInlet(marker_streams[0])
@@ -59,36 +66,38 @@ def record(
 
     Nchan = info.channel_count()
 
-    ch = description.child('channels').first_child()
-    ch_names = [ch.child_value('label')]
+    ch = description.child("channels").first_child()
+    ch_names = [ch.child_value("label")]
     for i in range(1, Nchan):
         ch = ch.next_sibling()
-        ch_names.append(ch.child_value('label'))
+        ch_names.append(ch.child_value("label"))
 
     res = []
     timestamps = []
     markers = []
     t_init = time()
     time_correction = inlet.time_correction()
+
     last_written_timestamp = None
-    print('Start recording at time t=%.3f' % t_init)
-    print('Time correction: ', time_correction)
+    print("Start recording at time t=%.3f" % t_init)
+    print("Time correction: ", time_correction)
     while (time() - t_init) < duration:
         try:
-            data, timestamp = inlet.pull_chunk(
-                timeout=1.0, max_samples=chunk_length)
+            data, timestamp = inlet.pull_chunk(timeout=1.0, max_samples=chunk_length)
 
             if timestamp:
                 res.append(data)
                 timestamps.extend(timestamp)
-                tr = time()
             if inlet_marker:
                 marker, timestamp = inlet_marker.pull_sample(timeout=0.0)
                 if timestamp:
                     markers.append([marker, timestamp])
 
             # Save every 5s
-            if continuous and (last_written_timestamp is None or last_written_timestamp + 5 < timestamps[-1]):
+            if continuous and (
+                last_written_timestamp is None
+                or last_written_timestamp + 5 < timestamps[-1]
+            ):
                 _save(
                     filename,
                     res,
@@ -153,7 +162,7 @@ def _save(
     if inlet_marker and markers:
         n_markers = len(markers[0][0])
         for ii in range(n_markers):
-            data['Marker%d' % ii] = 0
+            data["Marker%d" % ii] = 0
         # process markers:
         for marker in markers:
             # find index of markers
@@ -165,43 +174,41 @@ def _save(
     # If it does exist, just append new rows
     if not Path(filename).exists():
         # print("Saving whole file")
-        data.to_csv(filename, float_format='%.3f', index=False)
+        data.to_csv(filename, float_format="%.3f", index=False)
     else:
         # print("Appending file")
         # truncate already written timestamps
-        data = data[data['timestamps'] > last_written_timestamp]
-        data.to_csv(filename, float_format='%.3f', index=False, mode='a', header=False)
+        data = data[data["timestamps"] > last_written_timestamp]
+        data.to_csv(filename, float_format="%.3f", index=False, mode="a", header=False)
 
 
+# Record directly from a Muse without the use of LSL
 
-# Rercord directly from a Muse without the use of LSL
 
-
-def record_direct(duration,
-                  address,
-                  filename=None,
-                  backend='auto',
-                  interface=None,
-                  name=None):
-    if backend == 'bluemuse':
-        raise (NotImplementedError(
-            'Direct record not supported with BlueMuse backend. Use record after starting stream instead.'
-        ))
+def record_direct(
+    duration, address, filename=None, backend="auto", interface=None, name=None
+):
+    if backend == "bluemuse":
+        raise (
+            NotImplementedError(
+                "Direct record not supported with BlueMuse backend. Use record after starting stream instead."
+            )
+        )
 
     if not address:
         found_muse = find_muse(name, backend)
         if not found_muse:
-            print('Muse could not be found')
+            print("Muse could not be found")
             return
         else:
-            address = found_muse['address']
-            name = found_muse['name']
-        print('Connecting to %s : %s...' % (name if name else 'Muse', address))
+            address = found_muse["address"]
+            name = found_muse["name"]
+        print("Connecting to %s : %s..." % (name if name else "Muse", address))
 
     if not filename:
         filename = os.path.join(
-            os.getcwd(),
-            ("recording_%s.csv" % strftime("%Y-%m-%d-%H.%M.%S", gmtime())))
+            os.getcwd(), ("recording_%s.csv" % strftime("%Y-%m-%d-%H.%M.%S", gmtime()))
+        )
 
     eeg_samples = []
     timestamps = []
@@ -215,7 +222,7 @@ def record_direct(duration,
     muse.start()
 
     t_init = time()
-    print('Start recording at time t=%.3f' % t_init)
+    print("Start recording at time t=%.3f" % t_init)
 
     while (time() - t_init) < duration:
         try:
@@ -229,13 +236,14 @@ def record_direct(duration,
     timestamps = np.concatenate(timestamps)
     eeg_samples = np.concatenate(eeg_samples, 1).T
     recording = pd.DataFrame(
-        data=eeg_samples, columns=['TP9', 'AF7', 'AF8', 'TP10', 'Right AUX'])
+        data=eeg_samples, columns=["TP9", "AF7", "AF8", "TP10", "Right AUX"]
+    )
 
-    recording['timestamps'] = timestamps
+    recording["timestamps"] = timestamps
 
     directory = os.path.dirname(filename)
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-    recording.to_csv(filename, float_format='%.3f')
-    print('Done - wrote file: ' + filename + '.')
+    recording.to_csv(filename, float_format="%.3f")
+    print("Done - wrote file: " + filename + ".")
