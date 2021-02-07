@@ -1,8 +1,9 @@
 import re
 import subprocess
-from sys import platform
 from time import time, sleep
 from functools import partial
+from shutil import which
+from typing import List, Any
 
 from pylsl import StreamInfo, StreamOutlet
 import pygatt
@@ -24,39 +25,37 @@ def _print_muse_list(muses):
 
 
 # Returns a list of available Muse devices.
-def list_muses(backend='auto', interface=None):
+def list_muses(backend="auto", interface=None) -> List[Any]:
     backend = helper.resolve_backend(backend)
 
-    if backend == 'gatt':
-        interface = interface or 'hci0'
-        adapter = pygatt.GATTToolBackend(interface)
-    elif backend == 'bluemuse':
-        print('Starting BlueMuse, see BlueMuse window for interactive list of devices.')
-        subprocess.call('start bluemuse:', shell=True)
-        return
-    else:
-        adapter = pygatt.BGAPIBackend(serial_port=interface)
-
-    try:
-        adapter.start()
-        print('Searching for Muses, this may take up to 10 seconds...')
-        devices = adapter.scan(timeout=MUSE_SCAN_TIMEOUT)
-        adapter.stop()
-    except pygatt.exceptions.BLEError as e:
-        if backend == 'gatt':
-            print('pygatt failed to scan for BLE devices. Trying with '
-                  'bluetoothctl.')
-            return  _list_muses_bluetoothctl(MUSE_SCAN_TIMEOUT)
+    if backend in ["gatt", "bgapi"]:
+        print("Searching for Muses, this may take up to 10 seconds...")
+        if which("bluetoothctl") is not None:
+            muses = _list_muses_bluetoothctl()
         else:
-            raise e
+            muses = _list_muses_gatt(backend)
+    elif backend == "bluemuse":
+        print("Starting BlueMuse, see BlueMuse window for interactive list of devices.")
+        subprocess.call("start bluemuse:", shell=True)
+        return []
 
-    muses = [d for d in devices if d['name'] and 'Muse' in d['name']]
     _print_muse_list(muses)
-
     return muses
 
 
-def _list_muses_bluetoothctl(timeout, verbose=False):
+def _list_muses_gatt(backend, interface=None):
+    interface = interface or "hci0"
+    if backend == "gatt":
+        adapter = pygatt.GATTToolBackend(interface)
+    elif backend == "bgapi":
+        adapter = pygatt.BGAPIBackend(serial_port=interface)
+    adapter.start()
+    devices = adapter.scan(timeout=MUSE_SCAN_TIMEOUT)
+    adapter.stop()
+    return [d for d in devices if d["name"] and "Muse" in d["name"]]
+
+
+def _list_muses_bluetoothctl(verbose=False) -> List[Any]:
     """Identify Muse BLE devices using bluetoothctl.
 
     When using backend='gatt' on Linux, pygatt relies on the command line tool
@@ -70,36 +69,40 @@ def _list_muses_bluetoothctl(timeout, verbose=False):
     try:
         import pexpect
     except (ImportError, ModuleNotFoundError):
-        msg = ('pexpect is currently required to use bluetoothctl from within '
-               'a jupter notebook environment.')
+        msg = (
+            "pexpect is currently required to use bluetoothctl from within "
+            "a jupter notebook environment."
+        )
         raise ModuleNotFoundError(msg)
 
     # Run scan using pexpect as subprocess.run returns immediately in jupyter
     # notebooks
-    print('Searching for Muses, this may take up to 10 seconds...')
-    scan = pexpect.spawn('bluetoothctl scan on')
+    scan = pexpect.spawn("bluetoothctl scan on")
     try:
-        scan.expect('foooooo', timeout=timeout)
+        scan.expect("foooooo", timeout=MUSE_SCAN_TIMEOUT)
     except pexpect.EOF:
-        before_eof = scan.before.decode('utf-8', 'replace')
-        msg = f'Unexpected error when scanning: {before_eof}'
+        before_eof = scan.before.decode("utf-8", "replace")
+        msg = f"Unexpected error when scanning: {before_eof}"
         raise ValueError(msg)
     except pexpect.TIMEOUT:
         if verbose:
-            print(scan.before.decode('utf-8', 'replace').split('\r\n'))
+            print(scan.before.decode("utf-8", "replace").split("\r\n"))
 
     # List devices using bluetoothctl
-    list_devices_cmd = ['bluetoothctl', 'devices']
-    devices = subprocess.run(
-        list_devices_cmd, stdout=subprocess.PIPE).stdout.decode(
-            'utf-8').split('\n')
-    muses = [{
-            'name': re.findall('Muse.*', string=d)[0],
-            'address': re.findall(r'..:..:..:..:..:..', string=d)[0]
-        } for d in devices if 'Muse' in d]
-    _print_muse_list(muses)
-
-    return muses
+    list_devices_cmd = ["bluetoothctl", "devices"]
+    devices = (
+        subprocess.run(list_devices_cmd, stdout=subprocess.PIPE)
+        .stdout.decode("utf-8")
+        .split("\n")
+    )
+    return [
+        {
+            "name": re.findall("Muse.*", string=d)[0],
+            "address": re.findall(r"..:..:..:..:..:..", string=d)[0],
+        }
+        for d in devices
+        if "Muse" in d
+    ]
 
 
 # Returns the address of the Muse with the name provided, otherwise returns address of first available Muse.
