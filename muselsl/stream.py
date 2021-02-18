@@ -1,6 +1,7 @@
 import re
 import subprocess
 from time import time, sleep
+from sys import platform
 from functools import partial
 from shutil import which
 from typing import List, Any
@@ -8,6 +9,7 @@ from typing import List, Any
 from pylsl import StreamInfo, StreamOutlet
 import pygatt
 
+from . import backends
 from . import helper
 from .muse import Muse
 from .constants import (
@@ -49,6 +51,8 @@ def list_muses(backend="auto", interface=None) -> List[Any]:
         print("Starting BlueMuse, see BlueMuse window for interactive list of devices.")
         subprocess.call("start bluemuse:", shell=True)
         return []
+    elif backend == "bleak":
+        muses = _list_muses_bleak()
 
     _print_muse_list(muses)
     return muses
@@ -64,6 +68,16 @@ def _list_muses_gatt(backend, interface=None):
     devices = adapter.scan(timeout=MUSE_SCAN_TIMEOUT)
     adapter.stop()
     return [d for d in devices if d["name"] and "Muse" in d["name"]]
+
+
+def _list_muses_bleak():
+    adapter = backends.BleakBackend()
+    adapter.start()
+    print("Searching for Muses, this may take up to 10 seconds...")
+    devices = adapter.scan(timeout=MUSE_SCAN_TIMEOUT)
+    print(devices)
+    adapter.stop()
+    return devices
 
 
 def _list_muses_bluetoothctl(verbose=False) -> List[Any]:
@@ -276,7 +290,7 @@ def stream(
 
             while time() - muse.last_timestamp < timeout:
                 try:
-                    sleep(1)
+                    backends.sleep(1)
                 except KeyboardInterrupt:
                     muse.stop()
                     muse.disconnect()

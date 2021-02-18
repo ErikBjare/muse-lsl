@@ -5,8 +5,9 @@ from typing import Union, List, Optional
 from pathlib import Path
 from pylsl import StreamInlet, resolve_byprop
 from sklearn.linear_model import LinearRegression
-from time import time, sleep, strftime, gmtime
+from time import time, strftime, gmtime
 from .stream import find_muse
+from . import backends
 from .muse import Muse
 from .constants import (
     LSL_SCAN_TIMEOUT,
@@ -226,7 +227,7 @@ def record_direct(
 
     while (time() - t_init) < duration:
         try:
-            sleep(1)
+            backends.sleep(1)
         except KeyboardInterrupt:
             break
 
